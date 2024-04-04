@@ -46,6 +46,8 @@
     </style>
 </head>
 <body>
+<button id="authorize_button" onclick="loggedIn ? logOut() : logIn()" style="visibility:hidden">Log in</button>
+<pre id="error" style="white-space: pre-wrap;"></pre>
 <div id="infinite-table">
     <table>
         <thead>
@@ -58,13 +60,13 @@
     </table>
 </div>
 
-<script>
+<script type="text/javascript">
     const table = document.querySelector("#infinite-table");
     table.addEventListener(
         "scroll",
-        () => {
+        async () => {
             if (Math.abs(table.scrollHeight - table.clientHeight - table.scrollTop) < 1) {
-                loadMore();
+                await loadMore();
             }
         },
         {
@@ -73,22 +75,111 @@
     );
 
     const tableBody = table.getElementsByTagName("tbody")[0];
-    const loadMore = () => {
-        if (tableBody.rows.length >= 40) {
+    let nextPageToken = "";
+    async function loadMore() {
+        let response;
+        try{
+            response = await getFolders(20, nextPageToken);
+            nextPageToken = response.result.nextPageToken;
+        } catch (e) {
+            document.getElementById('error').innerText = 'Error: ' + e.body;
             return;
         }
 
-        for (let i = 0; i < 20; i++) {
+        for (const file of response.result.files){
             const row = tableBody.insertRow(-1);
             const cell = row.insertCell(0);
-            cell.innerHTML = "Folder " + tableBody.rows.length;
+            cell.innerHTML = file.name;
             cell.onclick = () => {
                 alert("You clicked on " + cell.innerHTML);
             };
         }
     };
-
-    loadMore();
 </script>
+
+<script type="text/javascript">
+    const CLIENT_ID = '100110295548-0putirgtu0s9tms183trje4cc6ki72ep.apps.googleusercontent.com';
+    const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.metadata.readonly';
+
+    let tokenClient;
+    let loggedIn = false;
+    let gapiInited = false;
+    let gisInited = false;
+
+    function gapiLoaded() {
+        gapi.load('client', async () => {
+            await gapi.client.init({
+                clientId: CLIENT_ID,
+                discoveryDocs: [DISCOVERY_DOC],
+            });
+            gapiInited = true;
+            maybeEnableButtons();
+        });
+    }
+
+    function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+        });
+        gisInited = true;
+        maybeEnableButtons();
+    }
+
+    function maybeEnableButtons() {
+        if (gapiInited && gisInited) {
+            document.getElementById('authorize_button').style.visibility = 'visible';
+        }
+    }
+
+    /**
+     *  Sign in the user upon button click.
+     */
+    function logIn() {
+        tokenClient.callback = async (resp) => {
+            if (resp.error !== undefined) {
+                throw (resp);
+            }
+            loggedIn = true;
+            document.getElementById('error').innerText = '';
+            document.getElementById('authorize_button').innerText = 'Log out';
+            await loadMore();
+        };
+
+        if (gapi.client.getToken() === null) {
+            // Prompt the user to select a Google Account and ask for consent to share their data
+            // when establishing a new session.
+            tokenClient.requestAccessToken({prompt: 'consent'});
+        } else {
+            // Skip display of account chooser and consent dialog for an existing session.
+            tokenClient.requestAccessToken({prompt: ''});
+        }
+    }
+
+    function logOut() {
+        const token = gapi.client.getToken();
+        if (token !== null) {
+            google.accounts.oauth2.revoke(token.access_token);
+            gapi.client.setToken('');
+            loggedIn = false;
+            document.getElementById('error').innerText = '';
+            document.getElementById('authorize_button').innerText = 'Log in';
+        }
+    }
+
+    async function getFolders(pageSize, nextPageToken) {
+        const response = await gapi.client.drive.files.list({
+            'pageSize': pageSize,
+            'pageToken': nextPageToken,
+            'fields': 'nextPageToken, files(id, name)',
+            'q': 'mimeType=\'application/vnd.google-apps.folder\'',
+        });
+
+        return response;
+    }
+</script>
+<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 </body>
 </html>
