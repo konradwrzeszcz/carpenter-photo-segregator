@@ -1,4 +1,4 @@
-# Google Drive Photo Uploader
+# Carpenter Photo Segregator
 
 A simple, single-page web application that allows users to:
 *   Sign in with their Google Account.
