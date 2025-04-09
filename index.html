@@ -17,6 +17,7 @@
         h1, h2 {
             color: #2c3e50;
             text-align: center;
+            margin-bottom: 1.5em; /* More space below headings */
         }
 
         #app-container {
@@ -25,7 +26,7 @@
             padding: 25px;
             background-color: #ffffff;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* Slightly stronger shadow */
         }
 
         #auth-section, #app-section > div, #app-section > p, #app-section > hr {
@@ -57,20 +58,33 @@
             box-sizing: border-box;
         }
 
+        /* Add focus styles */
+        select:focus,
+        input[type="text"]:focus,
+        input[type="search"]:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+
         button {
             padding: 10px 18px;
             margin: 5px 5px 5px 0;
             cursor: pointer;
             border: none;
             border-radius: 4px;
-            background-color: #3498db;
+            background-color: #3498db; /* Primary blue */
             color: white;
             font-size: 1em;
-            transition: background-color 0.2s ease;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        button:active {
+            transform: scale(0.98); /* Slight press effect */
         }
 
         button:hover {
-            background-color: #2980b9;
+            background-color: #2980b9; /* Darker blue on hover */
         }
 
         button:disabled {
@@ -114,6 +128,12 @@
             display: none;
         }
 
+        /* Ensure .hidden overrides display: block for specific elements */
+        #camera-view.hidden,
+        #photo-preview.hidden {
+            display: none;
+        }
+
         /* Tree View Styles */
         #folders-tree ul {
             list-style: none;
@@ -128,12 +148,11 @@
             background-color: #eaf2f8;
             font-weight: bold;
         }
-        #folders-tree li:hover {
-            background-color: #f8f9f9;
-        }
         #folders-tree .folder-name::before {
-            content: '📂 '; /* Open Folder icon */
+            content: '▶ '; /* Triangle icon */
             margin-right: 5px;
+            color: #95a5a6; /* Grey color for icon */
+            font-size: 0.8em; /* Make icon slightly smaller */
         }
 
         /* Toast Notification Styles */
@@ -173,6 +192,30 @@
         .toast-message.success {
             background-color: rgba(46, 204, 113, 0.85); /* Green for success */
         }
+
+        #folders-tree {
+            background-color: #fdfefe; /* Slightly off-white background for tree */
+        }
+
+        #no-camera-section p {
+            text-align: center;
+            color: #7f8c8d;
+            margin-top: 30px;
+        }
+
+        #folders-tree .folder-name {
+            display: inline-block; /* Allow padding/background */
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        #folders-tree .folder-name.selected {
+            background-color: #7FB3D5; /* Darker blue background */
+            font-weight: bold; /* Make selected folder bold */
+        }
+
+        #folders-tree li:hover > .folder-name { /* Target span on li hover */
+        }
     </style>
 </head>
 <body>
@@ -202,7 +245,6 @@
                 <input type="text" id="new-folder-name" placeholder="Or create a new folder name">
                 <button id="create-folder-button">Create Folder</button>
             </div>
-            <p>Selected Folder ID: <span id="selected-folder-id">None</span></p>
 
             <hr>
 
@@ -244,7 +286,6 @@
         const userEmailSpan = document.getElementById('user-email');
         const foldersTreeDiv = document.getElementById('folders-tree');
         const refreshFoldersButton = document.getElementById('refresh-folders-button');
-        const selectedFolderSpan = document.getElementById('selected-folder-id');
         const cameraSection = document.getElementById('camera-section');
         const noCameraSection = document.getElementById('no-camera-section');
         const newFolderInput = document.getElementById('new-folder-name');
@@ -281,7 +322,6 @@
                     discoveryDocs: DISCOVERY_DOCS,
                 });
                 gapiInited = true;
-                showToast('Google API client ready.', 'info');
                 console.log("GAPI client initialized successfully.");
                 maybeEnableAuthButton();
             } catch (err) {
@@ -302,7 +342,6 @@
                     callback: '', // Callback defined dynamically during sign-in
                 });
                 gisInited = true;
-                showToast('Google Identity Services ready.', 'info');
                 console.log("GIS token client initialized successfully.");
                 maybeEnableAuthButton();
             } catch (err) {
@@ -327,7 +366,6 @@
 
         // --- Authentication Functions ---
         function handleAuthClick() {
-            showToast('Initiating sign-in...');
             if (gapi.client.getToken() === null) {
                 // Prompt the user to select a Google Account and ask for consent
                 tokenClient.callback = async (resp) => {
@@ -343,7 +381,6 @@
                 tokenClient.requestAccessToken({ prompt: 'consent' });
             } else {
                 // User is already authenticated, potentially clicked again?
-                showToast('Already signed in.');
                 tokenClient.requestAccessToken({ prompt: '' }); // Re-auth without prompt if needed
             }
         }
@@ -357,7 +394,6 @@
                     showToast('Signed out.');
                     clearFolderTree();
                     selectedFolderId = null;
-                    selectedFolderSpan.textContent = 'None';
                     cameraSection.classList.add('hidden');
                     noCameraSection.classList.remove('hidden');
                     stopCameraStream(); // Stop camera on sign out
@@ -519,7 +555,11 @@
             if (selectedFolderId) {
                 const selectedLi = foldersTreeDiv.querySelector(`li[data-folder-id="${selectedFolderId}"]`);
                 if (selectedLi) {
-                    selectedLi.classList.add('selected');
+                    // Find the span within the LI and apply the class
+                    const selectedSpan = selectedLi.querySelector('.folder-name');
+                    if (selectedSpan) {
+                        selectedSpan.classList.add('selected');
+                    }
                 }
             }
         }
@@ -613,20 +653,18 @@
             const folderName = targetLi.querySelector('.folder-name').textContent;
 
             // Remove selection from previously selected item
-            const currentlySelected = foldersTreeDiv.querySelector('li.selected');
-            if (currentlySelected) {
-                // Double-check it's not the same element we are about to select
-                if (currentlySelected !== targetLi) {
-                    currentlySelected.classList.remove('selected');
-                }
+            const currentlySelectedSpan = foldersTreeDiv.querySelector('.folder-name.selected');
+            if (currentlySelectedSpan) {
+                currentlySelectedSpan.classList.remove('selected');
             }
 
-            // Add selection to the clicked item
-            targetLi.classList.add('selected');
+            // Add selection to the clicked item's span
+            const targetSpan = targetLi.querySelector('.folder-name');
+            if (targetSpan) {
+                targetSpan.classList.add('selected');
+            }
 
             selectedFolderId = folderId;
-            selectedFolderSpan.textContent = folderId || 'None';
-
             if (folderId) {
                 // Show camera section, hide placeholder
                 cameraSection.classList.remove('hidden');
@@ -658,30 +696,42 @@
                 cameraView.srcObject = cameraStream;
                 await cameraView.play(); // Ensure video plays
                 showToast('Camera active.');
-                // Reset UI for camera view
-                cameraView.classList.remove('hidden');
+
+                // --- UI RESET FOR CAMERA VIEW ---
+                console.log('[UI Update] Setting for Camera View');
+                cameraView.classList.remove('hidden'); // SHOW video
+                photoPreview.classList.add('hidden'); // HIDE preview
+                console.log('cameraView hidden:', cameraView.classList.contains('hidden')); // Expected: false
+                console.log('photoPreview hidden:', photoPreview.classList.contains('hidden')); // Expected: true
                 captureButton.classList.remove('hidden');
-                photoPreview.classList.add('hidden');
                 uploadButton.classList.add('hidden');
                 recaptureButton.classList.add('hidden');
+                uploadButton.disabled = false;
+                recaptureButton.disabled = false;
                 capturedBlob = null;
-
             } catch (err) {
                 console.error('Camera Error:', err);
                 // Fallback to any camera if environment facing fails or is not supported
                 if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') {
                     try {
-                         showToast('Environment camera not found, trying default...');
+                        showToast('Environment camera not found, trying default...');
                         const fallbackConstraints = { video: true };
                         cameraStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
                         cameraView.srcObject = cameraStream;
                         await cameraView.play();
                         showToast('Camera active.');
-                        cameraView.classList.remove('hidden');
+
+                        // --- UI RESET FOR CAMERA VIEW (Fallback) ---
+                        console.log('[UI Update] Setting for Camera View (Fallback)');
+                        cameraView.classList.remove('hidden'); // SHOW video
+                        photoPreview.classList.add('hidden'); // HIDE preview
+                        console.log('cameraView hidden:', cameraView.classList.contains('hidden')); // Expected: false
+                        console.log('photoPreview hidden:', photoPreview.classList.contains('hidden')); // Expected: true
                         captureButton.classList.remove('hidden');
-                        photoPreview.classList.add('hidden');
                         uploadButton.classList.add('hidden');
                         recaptureButton.classList.add('hidden');
+                        uploadButton.disabled = false;
+                        recaptureButton.disabled = false;
                         capturedBlob = null;
                     } catch (fallbackErr) {
                         showToast(`Camera access error: ${fallbackErr.message}`, 'error', 5000);
@@ -731,10 +781,13 @@
                     photoPreview.src = URL.createObjectURL(blob);
                     showToast('Photo captured.', 'success');
 
-                    // Update UI: Hide video/capture, show preview/upload/recapture
-                    cameraView.classList.add('hidden');
+                    // --- UI UPDATE FOR PREVIEW ---
+                    console.log('[UI Update] Setting for Preview View');
+                    cameraView.classList.add('hidden'); // HIDE video
+                    photoPreview.classList.remove('hidden'); // SHOW preview
+                    console.log('cameraView hidden:', cameraView.classList.contains('hidden')); // Expected: true
+                    console.log('photoPreview hidden:', photoPreview.classList.contains('hidden')); // Expected: false
                     captureButton.classList.add('hidden');
-                    photoPreview.classList.remove('hidden');
                     uploadButton.classList.remove('hidden');
                     recaptureButton.classList.remove('hidden');
                     stopCameraStream(); // Stop the stream after capture
@@ -745,10 +798,10 @@
         }
 
         function handleRecaptureClick() {
-            // Simply re-initialize the camera to show the live feed again
             capturedBlob = null;
             photoPreview.src = ''; // Clear preview
-            initializeCamera(); // This will reset the UI elements
+            // No need to explicitly hide preview here, initializeCamera will do it
+            initializeCamera(); // This will reset UI to camera view (video visible, preview hidden)
         }
 
         async function uploadPhoto() {
@@ -833,7 +886,6 @@
                 userEmailSpan.textContent = '';
                 clearFolderTree();
                 selectedFolderId = null;
-                selectedFolderSpan.textContent = 'None';
                 cameraSection.classList.add('hidden');
                 noCameraSection.classList.remove('hidden');
                 stopCameraStream(); // Stop camera on sign out
