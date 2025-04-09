@@ -3,183 +3,890 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive Photo Uploader</title>
     <style>
-        #infinite-table {
-            height: calc(100vh - 16px);
-            overflow: auto;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
         }
 
-        table {
-            border-spacing: 0;
-            width: 100%;
-            height: 400px;
-            border: 1px solid #b8b8b8;
-            table-layout: fixed;
-        }
-
-        th,
-        td {
-            text-align: center;
-            padding: 16px;
-        }
-
-        thead tr th {
-            background-color: #b8b8b8;
-            position: sticky;
-            top: 0;
-            z-index: 99;
+        h1, h2 {
+            color: #2c3e50;
             text-align: center;
         }
 
-        tbody tr:hover{
-            filter: brightness(50%);
+        #app-container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 25px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #auth-section, #app-section > div, #app-section > p, #app-section > hr {
+            margin-bottom: 20px;
+        }
+
+        #auth-section {
+            text-align: center;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #eee;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        select, input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 10px 18px;
+            margin: 5px 5px 5px 0;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background-color: #3498db;
+            color: white;
+            font-size: 1em;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        #signout-button {
+            background-color: #e74c3c;
+        }
+
+        #signout-button:hover {
+            background-color: #c0392b;
+        }
+
+        #camera-view, #photo-preview {
+            display: block;
+            max-width: 100%;
+            border: 1px solid #ddd;
+            margin: 10px auto;
+            background-color: #eee;
+            min-height: 200px;
+        }
+
+        #camera-section {
+            text-align: center;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #ecf0f1;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            text-align: center;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Tree View Styles */
+        #folders-tree ul {
+            list-style: none;
+            padding-left: 20px;
+            margin: 0;
+        }
+        #folders-tree li {
+            padding: 3px 0;
             cursor: pointer;
         }
-
-        tr:nth-child(odd) {
-            background-color: #f0f0f0;
+        #folders-tree li.selected {
+            background-color: #eaf2f8;
+            font-weight: bold;
+        }
+        #folders-tree li:hover {
+            background-color: #f8f9f9;
+        }
+        #folders-tree .folder-name::before {
+            content: '📂 '; /* Open Folder icon */
+            margin-right: 5px;
         }
 
-        tr:nth-child(even) {
-            background-color: #d4d4d4;
+        /* Toast Notification Styles */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column-reverse; /* Show newest toast at the bottom */
+            align-items: center;
+        }
+
+        .toast-message {
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            margin-top: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            font-size: 0.9em;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .toast-message.show {
+            opacity: 1;
+        }
+
+        .toast-message.error {
+            background-color: rgba(231, 76, 60, 0.85); /* Red for errors */
+        }
+
+        .toast-message.success {
+            background-color: rgba(46, 204, 113, 0.85); /* Green for success */
         }
     </style>
 </head>
 <body>
-<button id="authorize_button" onclick="loggedIn ? logOut() : logIn()" style="visibility:hidden">Log in</button>
-<pre id="error" style="white-space: pre-wrap;"></pre>
-<div id="infinite-table">
-    <table>
-        <thead>
-        <tr>
-            <th>Choose your folder</th>
-        </tr>
-        </thead>
-        <tbody>
-        </tbody>
-    </table>
-</div>
+    <div id="app-container">
+        <h1>Google Drive Photo Uploader</h1>
 
-<script type="text/javascript">
-    const table = document.querySelector("#infinite-table");
-    table.addEventListener(
-        "scroll",
-        async () => {
-            if (Math.abs(table.scrollHeight - table.clientHeight - table.scrollTop) < 1) {
-                await loadMore();
+        <div id="auth-section">
+            <button id="auth-button">Sign in with Google</button>
+        </div>
+
+        <div id="app-section" class="hidden">
+            <p>Signed in as: <span id="user-email"></span> <button id="signout-button">Sign Out</button></p>
+
+            <hr>
+
+            <h2>Select or Create a Folder</h2>
+            <div id="folder-selection">
+                <label for="folders">Choose a folder:</label>
+                <input type="search" id="folder-search" placeholder="Search folders..." style="margin-bottom: 5px; width: calc(100% - 22px);">
+                <div id="folders-tree" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+                    <!-- Tree will be rendered here -->
+                    <p>--Loading folders--</p>
+                </div>
+                <button id="refresh-folders-button">Refresh Folders</button>
+            </div>
+            <div id="folder-creation">
+                <input type="text" id="new-folder-name" placeholder="Or create a new folder name">
+                <button id="create-folder-button">Create Folder</button>
+            </div>
+            <p>Selected Folder ID: <span id="selected-folder-id">None</span></p>
+
+            <hr>
+
+            <h2>Take Photo</h2>
+            <div id="camera-section" class="hidden">
+                <video id="camera-view" autoplay playsinline></video>
+                <img id="photo-preview" alt="Photo Preview" class="hidden"/>
+                <canvas id="photo-canvas" class="hidden"></canvas>
+                <div>
+                    <button id="capture-button">Capture Photo</button>
+                    <button id="upload-button" class="hidden">Upload Photo</button>
+                    <button id="recapture-button" class="hidden">Retake Photo</button>
+                </div>
+            </div>
+            <div id="no-camera-section">
+                <p>Select a folder above to activate the camera.</p>
+            </div>
+
+        </div>
+
+        <!-- Toast Notification Container -->
+        <div id="toast-container"></div>
+    </div>
+
+    <script>
+        // JavaScript code will go here
+        console.log("HTML structure loaded.");
+
+        // --- Constants ---
+        const CLIENT_ID = '100110295548-0putirgtu0s9tms183trje4cc6ki72ep.apps.googleusercontent.com'; // <--- REPLACE WITH YOUR CLIENT ID
+        const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly'; // Added metadata scope for listing
+
+        // --- DOM Elements ---
+        const authButton = document.getElementById('auth-button');
+        const signoutButton = document.getElementById('signout-button');
+        const authSection = document.getElementById('auth-section');
+        const appSection = document.getElementById('app-section');
+        const userEmailSpan = document.getElementById('user-email');
+        const foldersTreeDiv = document.getElementById('folders-tree');
+        const refreshFoldersButton = document.getElementById('refresh-folders-button');
+        const selectedFolderSpan = document.getElementById('selected-folder-id');
+        const cameraSection = document.getElementById('camera-section');
+        const noCameraSection = document.getElementById('no-camera-section');
+        const newFolderInput = document.getElementById('new-folder-name');
+        const createFolderButton = document.getElementById('create-folder-button');
+        const cameraView = document.getElementById('camera-view');
+        const captureButton = document.getElementById('capture-button');
+        const photoCanvas = document.getElementById('photo-canvas');
+        const photoPreview = document.getElementById('photo-preview');
+        const uploadButton = document.getElementById('upload-button');
+        const recaptureButton = document.getElementById('recapture-button');
+        const folderSearchInput = document.getElementById('folder-search'); // Added search input
+        const toastContainer = document.getElementById('toast-container'); // Add reference to toast container
+
+        // --- App State ---
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+        let selectedFolderId = null; // Track selected folder ID
+        let fullFolderList = []; // Store all fetched folders for filtering
+        let cameraStream = null; // To hold the MediaStream object
+        let capturedBlob = null; // To hold the captured photo Blob
+
+        // --- Initialization ---
+        function gapiLoaded() {
+            console.log("gapiLoaded callback triggered.");
+            gapi.load('client', initializeGapiClient);
+        }
+
+        async function initializeGapiClient() {
+            console.log("Attempting to initialize gapi client...");
+            try {
+                await gapi.client.init({
+                    // apiKey: API_KEY, // Usually not needed when using OAuth token
+                    discoveryDocs: DISCOVERY_DOCS,
+                });
+                gapiInited = true;
+                showToast('Google API client ready.', 'info');
+                console.log("GAPI client initialized successfully.");
+                maybeEnableAuthButton();
+            } catch (err) {
+                console.error("Error initializing GAPI client:", err);
+                showToast('Error initializing Google API client.', 'error', 5000);
+                gapiInited = false; // Ensure state is false on error
+                maybeEnableAuthButton(); // Check button state even on error
             }
-        },
-        {
-            passive: true
-        }
-    );
-
-    const tableBody = table.getElementsByTagName("tbody")[0];
-    let nextPageToken = "";
-    async function loadMore() {
-        let response;
-        try{
-            response = await getFolders(20, nextPageToken);
-            nextPageToken = response.result.nextPageToken;
-        } catch (e) {
-            document.getElementById('error').innerText = 'Error: ' + e.body;
-            return;
         }
 
-        for (const file of response.result.files){
-            const row = tableBody.insertRow(-1);
-            const cell = row.insertCell(0);
-            cell.innerHTML = file.name;
-            cell.onclick = () => {
-                alert("You clicked on " + cell.innerHTML);
-            };
+        function gisLoaded() {
+            console.log("gisLoaded callback triggered.");
+            console.log("Attempting to initialize GIS token client...");
+            try {
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    callback: '', // Callback defined dynamically during sign-in
+                });
+                gisInited = true;
+                showToast('Google Identity Services ready.', 'info');
+                console.log("GIS token client initialized successfully.");
+                maybeEnableAuthButton();
+            } catch (err) {
+                console.error("Error initializing GIS token client:", err);
+                showToast('Error initializing Google Identity Services.', 'error', 5000);
+                gisInited = false; // Ensure state is false on error
+                maybeEnableAuthButton(); // Check button state even on error
+            }
         }
-    };
-</script>
 
-<script type="text/javascript">
-    const CLIENT_ID = '100110295548-0putirgtu0s9tms183trje4cc6ki72ep.apps.googleusercontent.com';
-    const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-    const SCOPES = 'https://www.googleapis.com/auth/drive.metadata.readonly';
+        function maybeEnableAuthButton() {
+            console.log(`Checking if auth button can be enabled: gapiInited=${gapiInited}, gisInited=${gisInited}`);
+            if (gapiInited && gisInited) {
+                authButton.disabled = false;
+                showToast('Ready to sign in.');
+                console.log("Auth button enabled.");
+            } else {
+                authButton.disabled = true; // Keep disabled until both libs are ready
+                console.log("Auth button remains disabled.");
+            }
+        }
 
-    let tokenClient;
-    let loggedIn = false;
-    let gapiInited = false;
-    let gisInited = false;
+        // --- Authentication Functions ---
+        function handleAuthClick() {
+            showToast('Initiating sign-in...');
+            if (gapi.client.getToken() === null) {
+                // Prompt the user to select a Google Account and ask for consent
+                tokenClient.callback = async (resp) => {
+                    if (resp.error !== undefined) {
+                        showToast('Sign-in error: ' + resp.error, 'error', 5000);
+                        throw (resp);
+                    }
+                    showToast('Sign-in successful!', 'success');
+                    updateUiSignedIn(true);
+                    await fetchUserInfo();
+                    await listFolders(); // Load folders after sign-in
+                };
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            } else {
+                // User is already authenticated, potentially clicked again?
+                showToast('Already signed in.');
+                tokenClient.requestAccessToken({ prompt: '' }); // Re-auth without prompt if needed
+            }
+        }
 
-    function gapiLoaded() {
-        gapi.load('client', async () => {
-            await gapi.client.init({
-                clientId: CLIENT_ID,
-                discoveryDocs: [DISCOVERY_DOC],
+        function handleSignoutClick() {
+            const token = gapi.client.getToken();
+            if (token !== null) {
+                google.accounts.oauth2.revoke(token.access_token, () => {
+                    gapi.client.setToken(null);
+                    updateUiSignedIn(false);
+                    showToast('Signed out.');
+                    clearFolderTree();
+                    selectedFolderId = null;
+                    selectedFolderSpan.textContent = 'None';
+                    cameraSection.classList.add('hidden');
+                    noCameraSection.classList.remove('hidden');
+                    stopCameraStream(); // Stop camera on sign out
+                });
+            } else {
+                 showToast('Already signed out.');
+            }
+        }
+
+        async function fetchUserInfo() {
+             try {
+                 const response = await gapi.client.oauth2.userinfo.get();
+                 if (response && response.result && response.result.email) {
+                    userEmailSpan.textContent = response.result.email;
+                    // No need to update main status, widget shows info
+                 } else {
+                    showToast('Could not retrieve user email.', 'error');
+                 }
+             } catch (err) {
+                 showToast('Error fetching user info.', 'error');
+             }
+         }
+
+        // --- Drive API Functions ---
+        async function listFolders() {
+            showToast('Loading folders...');
+            foldersTreeDiv.innerHTML = '<p>--Loading folders--</p>';
+            refreshFoldersButton.disabled = true;
+
+            fullFolderList = []; // Reset global list
+            let pageToken = null;
+
+            try {
+                // Fetch ALL folders using pagination
+                do {
+                    const response = await gapi.client.drive.files.list({
+                        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
+                        fields: 'nextPageToken, files(id, name, parents)', // Include parents field
+                        pageSize: 500, // Fetch more folders per request
+                        pageToken: pageToken,
+                        orderBy: 'name'
+                    });
+
+                    if (response.result.files) {
+                        fullFolderList = fullFolderList.concat(response.result.files);
+                    }
+                    pageToken = response.result.nextPageToken;
+                } while (pageToken);
+
+                // Get current search term and apply filter after refresh
+                const currentSearchTerm = folderSearchInput.value;
+                filterAndRenderTree(currentSearchTerm);
+
+                if (fullFolderList.length === 0) {
+                    showToast('No folders found.');
+                } else {
+                    showToast('Folder tree loaded.', 'success');
+                }
+            } catch (err) {
+                showToast('Error loading folders.', 'error', 5000);
+                foldersTreeDiv.innerHTML = '<p>--Error loading folders--</p>';
+            } finally {
+                refreshFoldersButton.disabled = false;
+            }
+        }
+
+        // Helper function to build the tree structure
+        function buildTree(folders) {
+            const map = {};
+            const roots = [];
+
+            // First pass: Create map 
+            folders.forEach(folder => {
+                map[folder.id] = { ...folder, children: [] };
             });
-            gapiInited = true;
-            maybeEnableButtons();
-        });
-    }
 
-    function gisLoaded() {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-        });
-        gisInited = true;
-        maybeEnableButtons();
-    }
+            // Second pass: Build hierarchy and identify roots
+            Object.values(map).forEach(node => {
+                if (node.parents && node.parents.length > 0) {
+                    const parentId = node.parents[0];
+                    if (map[parentId]) {
+                        // Check if the child is already added to prevent duplicates if API returns inconsistent parent info
+                        if (!map[parentId].children.some(child => child.id === node.id)) { 
+                            map[parentId].children.push(node);
+                        }
+                    } else {
+                        // Parent ID exists but parent is not in our map (e.g., shared folder, inaccessible)
+                        // Treat this node as a root for display purposes
+                        if (!roots.some(root => root.id === node.id)) {
+                            roots.push(node);
+                        } 
+                    }
+                } else {
+                    // No parents likely means it's a root folder (or orphan)
+                    if (!roots.some(root => root.id === node.id)) {
+                        roots.push(node);
+                    }
+                }
+            });
+            
+            // Simple sort roots by name
+            roots.sort((a, b) => a.name.localeCompare(b.name));
+            // Simple sort children within each node by name
+            Object.values(map).forEach(node => {
+                node.children.sort((a, b) => a.name.localeCompare(b.name));
+            });
 
-    function maybeEnableButtons() {
-        if (gapiInited && gisInited) {
-            document.getElementById('authorize_button').style.visibility = 'visible';
+            return roots;
         }
-    }
 
-    /**
-     *  Sign in the user upon button click.
-     */
-    function logIn() {
-        tokenClient.callback = async (resp) => {
-            if (resp.error !== undefined) {
-                throw (resp);
+        // Revised function to filter the tree based on search term, showing full context
+        function filterTree(nodes, searchTerm) {
+            if (!searchTerm) return nodes; // No filter, return original nodes
+            const lowerSearchTerm = searchTerm.toLowerCase();
+
+            function recursiveFilter(node, parentMatched) {
+                const isDirectMatch = node.name.toLowerCase().includes(lowerSearchTerm);
+                const shouldIncludeAllChildren = isDirectMatch || parentMatched; // If self or parent matches, include children
+
+                let filteredChildren = [];
+                let hasMatchingDescendant = false;
+                if (node.children && node.children.length > 0) {
+                    node.children.forEach(child => {
+                        const result = recursiveFilter(child, shouldIncludeAllChildren);
+                        if (result) {
+                            filteredChildren.push(result);
+                            hasMatchingDescendant = true; // Mark that a descendant was kept
+                        }
+                    });
+                }
+
+                // Keep this node if:
+                // 1. It directly matches the search term.
+                // 2. It has a descendant that matches (indicated by filteredChildren having items).
+                // 3. Its parent matched the search term (passed down via parentMatched), so we include it.
+                if (isDirectMatch || hasMatchingDescendant || parentMatched) {
+                    // Return a copy of the node with the (potentially empty) list of filtered children
+                    return { ...node, children: filteredChildren };
+                } else {
+                    return null; // Prune this node and its branch if none of the conditions are met
+                }
             }
-            loggedIn = true;
-            document.getElementById('error').innerText = '';
-            document.getElementById('authorize_button').innerText = 'Log out';
-            await loadMore();
-        };
 
-        if (gapi.client.getToken() === null) {
-            // Prompt the user to select a Google Account and ask for consent to share their data
-            // when establishing a new session.
-            tokenClient.requestAccessToken({prompt: 'consent'});
-        } else {
-            // Skip display of account chooser and consent dialog for an existing session.
-            tokenClient.requestAccessToken({prompt: ''});
+            // Apply the recursive filter starting with parentMatched = false
+            return nodes.map(node => recursiveFilter(node, false)).filter(node => node !== null);
         }
-    }
 
-    function logOut() {
-        const token = gapi.client.getToken();
-        if (token !== null) {
-            google.accounts.oauth2.revoke(token.access_token);
-            gapi.client.setToken('');
-            loggedIn = false;
-            document.getElementById('error').innerText = '';
-            document.getElementById('authorize_button').innerText = 'Log in';
+        // Combined function to filter data, build tree, and render
+        function filterAndRenderTree(searchTerm) {
+            console.log("Filtering tree with term:", searchTerm);
+            // Build the tree from the *full* list of folders first
+            const fullTree = buildTree(fullFolderList);
+            // Filter the constructed tree
+            const filteredTreeNodes = filterTree(fullTree, searchTerm);
+            // Render the filtered tree
+            renderTree(filteredTreeNodes, foldersTreeDiv);
+
+            // Re-apply selection highlight if the selected folder is still visible
+            if (selectedFolderId) {
+                const selectedLi = foldersTreeDiv.querySelector(`li[data-folder-id="${selectedFolderId}"]`);
+                if (selectedLi) {
+                    selectedLi.classList.add('selected');
+                }
+            }
         }
-    }
 
-    async function getFolders(pageSize, nextPageToken) {
-        const response = await gapi.client.drive.files.list({
-            'pageSize': pageSize,
-            'pageToken': nextPageToken,
-            'fields': 'nextPageToken, files(id, name)',
-            'q': 'mimeType=\'application/vnd.google-apps.folder\'',
-        });
+        // Recursive function to render the tree as nested UL/LI
+        function renderTree(nodes, container) {
+            container.innerHTML = ''; // Clear previous content
+            if (!nodes || nodes.length === 0) {
+                container.innerHTML = '<p>No folders found.</p>';
+                return;
+            }
+            const ul = document.createElement('ul');
+            nodes.forEach(node => {
+                const li = document.createElement('li');
+                li.dataset.folderId = node.id;
+                // Add folder icon and name
+                const span = document.createElement('span');
+                span.className = 'folder-name';
+                span.textContent = node.name;
+                li.appendChild(span);
 
-        return response;
-    }
-</script>
-<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+                // Add click listener directly to LI
+                li.addEventListener('click', handleFolderSelect); 
+
+                // If the node has children, render them recursively in a nested UL
+                if (node.children && node.children.length > 0) {
+                    const childUl = document.createElement('ul');
+                    renderTree(node.children, childUl); // Pass the new UL as the container
+                    li.appendChild(childUl);
+                }
+                ul.appendChild(li);
+            });
+            container.appendChild(ul);
+        }
+
+        async function createFolder() {
+            const folderName = newFolderInput.value.trim();
+            if (!folderName) {
+                showToast('Please enter a folder name.', 'error');
+                return;
+            }
+
+            showToast(`Creating folder "${folderName}"...`);
+            createFolderButton.disabled = true;
+            newFolderInput.disabled = true;
+
+            try {
+                if (!selectedFolderId) {
+                    showToast('Please select a parent folder first.', 'error');
+                    throw new Error('Parent folder not selected'); // Throw error to prevent list refresh in finally
+                }
+
+                const fileMetadata = {
+                    name: folderName,
+                    mimeType: 'application/vnd.google-apps.folder',
+                    parents: [selectedFolderId] // Create inside the selected folder
+                };
+
+                const response = await gapi.client.drive.files.create({
+                    resource: fileMetadata,
+                    fields: 'id, name'
+                });
+
+                showToast(`Folder "${response.result.name}" created.`, 'success');
+                newFolderInput.value = ''; // Clear input field
+                await listFolders(); // Refresh the folder list to show the new folder
+
+            } catch (err) {
+                // Avoid duplicate status update if parent folder not selected
+                if (err.message !== 'Parent folder not selected') {
+                    showToast('Error creating folder.', 'error');
+                    console.error('Error creating folder:', err);
+                }
+            } finally {
+                createFolderButton.disabled = false;
+                newFolderInput.disabled = false;
+            }
+        }
+
+        function handleFolderSelect(event) {
+            event.stopPropagation(); // Prevent click from bubbling to parent LIs
+
+            // Use event delegation - get the LI element that was clicked
+            let targetLi = event.target;
+            while (targetLi && targetLi.tagName !== 'LI') {
+                targetLi = targetLi.parentElement;
+            }
+            if (!targetLi || !targetLi.dataset.folderId) return; // Clicked outside a folder item
+
+            const folderId = targetLi.dataset.folderId;
+            const folderName = targetLi.querySelector('.folder-name').textContent;
+
+            // Remove selection from previously selected item
+            const currentlySelected = foldersTreeDiv.querySelector('li.selected');
+            if (currentlySelected) {
+                // Double-check it's not the same element we are about to select
+                if (currentlySelected !== targetLi) {
+                    currentlySelected.classList.remove('selected');
+                }
+            }
+
+            // Add selection to the clicked item
+            targetLi.classList.add('selected');
+
+            selectedFolderId = folderId;
+            selectedFolderSpan.textContent = folderId || 'None';
+
+            if (folderId) {
+                // Show camera section, hide placeholder
+                cameraSection.classList.remove('hidden');
+                noCameraSection.classList.add('hidden');
+                initializeCamera(); // Initialize camera when folder is selected
+            } else {
+                showToast('No folder selected.');
+                // Hide camera section, show placeholder
+                cameraSection.classList.add('hidden');
+                noCameraSection.classList.remove('hidden');
+                stopCameraStream(); // Stop camera if folder is deselected
+            }
+        }
+
+        function clearFolderTree() {
+            foldersTreeDiv.innerHTML = '<p>--Select a folder--</p>';
+        }
+
+        // --- Camera Functions ---
+        async function initializeCamera() {
+            if (cameraStream) { // If stream already exists, do nothing
+                return;
+            }
+            showToast('Initializing camera...');
+            try {
+                // Prefer back camera
+                const constraints = { video: { facingMode: 'environment' } };
+                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                cameraView.srcObject = cameraStream;
+                await cameraView.play(); // Ensure video plays
+                showToast('Camera active.');
+                // Reset UI for camera view
+                cameraView.classList.remove('hidden');
+                captureButton.classList.remove('hidden');
+                photoPreview.classList.add('hidden');
+                uploadButton.classList.add('hidden');
+                recaptureButton.classList.add('hidden');
+                capturedBlob = null;
+
+            } catch (err) {
+                console.error('Camera Error:', err);
+                // Fallback to any camera if environment facing fails or is not supported
+                if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') {
+                    try {
+                         showToast('Environment camera not found, trying default...');
+                        const fallbackConstraints = { video: true };
+                        cameraStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                        cameraView.srcObject = cameraStream;
+                        await cameraView.play();
+                        showToast('Camera active.');
+                        cameraView.classList.remove('hidden');
+                        captureButton.classList.remove('hidden');
+                        photoPreview.classList.add('hidden');
+                        uploadButton.classList.add('hidden');
+                        recaptureButton.classList.add('hidden');
+                        capturedBlob = null;
+                    } catch (fallbackErr) {
+                        showToast(`Camera access error: ${fallbackErr.message}`, 'error', 5000);
+                        console.error('Fallback Camera Error:', fallbackErr);
+                        cameraSection.classList.add('hidden'); // Hide camera section if error persists
+                        noCameraSection.classList.remove('hidden');
+                        noCameraSection.querySelector('p').textContent = 'Could not access camera. Please ensure permission is granted.';
+                    }
+                } else {
+                    showToast(`Camera access error: ${err.message}`, 'error', 5000);
+                    cameraSection.classList.add('hidden');
+                    noCameraSection.classList.remove('hidden');
+                    noCameraSection.querySelector('p').textContent = 'Could not access camera. Please ensure permission is granted.';
+                }
+            }
+        }
+
+        function stopCameraStream() {
+            if (cameraStream) {
+                console.log('Stopping camera stream tracks...');
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+                cameraView.srcObject = null;
+                console.log('Camera stream stopped.');
+            }
+        }
+
+        function handleCaptureClick() {
+            if (!cameraStream) {
+                showToast('Camera not active.', 'error');
+                return;
+            }
+            showToast('Capturing photo...');
+
+            const context = photoCanvas.getContext('2d');
+            // Set canvas dimensions to video dimensions
+            photoCanvas.width = cameraView.videoWidth;
+            photoCanvas.height = cameraView.videoHeight;
+
+            // Draw the current video frame onto the canvas
+            context.drawImage(cameraView, 0, 0, photoCanvas.width, photoCanvas.height);
+
+            // Convert canvas to Blob
+            photoCanvas.toBlob(blob => {
+                if (blob) {
+                    capturedBlob = blob;
+                    photoPreview.src = URL.createObjectURL(blob);
+                    showToast('Photo captured.', 'success');
+
+                    // Update UI: Hide video/capture, show preview/upload/recapture
+                    cameraView.classList.add('hidden');
+                    captureButton.classList.add('hidden');
+                    photoPreview.classList.remove('hidden');
+                    uploadButton.classList.remove('hidden');
+                    recaptureButton.classList.remove('hidden');
+                    stopCameraStream(); // Stop the stream after capture
+                } else {
+                    showToast('Error capturing photo.', 'error');
+                }
+            }, 'image/jpeg', 0.9); // Adjust type and quality as needed
+        }
+
+        function handleRecaptureClick() {
+            // Simply re-initialize the camera to show the live feed again
+            capturedBlob = null;
+            photoPreview.src = ''; // Clear preview
+            initializeCamera(); // This will reset the UI elements
+        }
+
+        async function uploadPhoto() {
+            if (!capturedBlob) {
+                showToast('No photo captured yet.', 'error');
+                return;
+            }
+            if (!selectedFolderId) {
+                showToast('No folder selected for upload.', 'error');
+                return;
+            }
+
+            showToast('Starting photo upload...');
+            uploadButton.disabled = true;
+            recaptureButton.disabled = true;
+
+            console.log(`Attempting to upload photo to folder ID: ${selectedFolderId}`);
+            try {
+                const timestamp = new Date().toISOString().replace(/:/g, '_').replace(/\.\d{3}Z$/, 'Z'); // Format: YYYY-MM-DDTHH_MM_SSZ
+                const metadata = {
+                    name: `${timestamp}.jpg`, // ISO 8601-based filename
+                    mimeType: 'image/jpeg',
+                    parents: [selectedFolderId] // Upload to the selected folder
+                };
+
+                console.log('Upload metadata:', metadata);
+                console.log('Uploading blob:', capturedBlob);
+
+                const form = new FormData();
+                form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+                form.append('file', capturedBlob);
+
+                // Use fetch API directly for multipart upload
+                const accessToken = gapi.client.getToken().access_token;
+                if (!accessToken) {
+                    throw new Error('Access token not found.');
+                }
+                console.log('Making fetch request for upload...');
+                const fetchResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                        // Content-Type is set automatically by FormData with fetch
+                    },
+                    body: form
+                });
+
+                const responseJson = await fetchResponse.json();
+
+                if (!fetchResponse.ok) {
+                    // Throw an error that includes the response body for better debugging
+                    throw new Error(`Upload failed: ${fetchResponse.status} ${fetchResponse.statusText} - ${JSON.stringify(responseJson)}`);
+                }
+
+                console.log('Upload successful! API Response:', responseJson);
+                showToast('Photo uploaded successfully!', 'success');
+                // Reset state after successful upload - clear blob/preview and re-init camera
+                console.log('Resetting UI after successful upload...');
+                capturedBlob = null;
+                photoPreview.src = '';
+                URL.revokeObjectURL(photoPreview.src); // Clean up object URL
+                initializeCamera(); // Go back to camera view
+
+            } catch (err) {
+                // Updated error handling for fetch response
+                showToast(`Upload error: ${err.message}`, 'error', 5000);
+                console.error('Upload Error Details:', err); // Log the raw error
+                // Re-enable buttons on error to allow retry
+                uploadButton.disabled = false;
+                recaptureButton.disabled = false;
+            }
+        }
+
+        // --- UI Update Functions ---
+        function updateUiSignedIn(isSignedIn) {
+            if (isSignedIn) {
+                authSection.classList.add('hidden');
+                appSection.classList.remove('hidden');
+            } else {
+                authSection.classList.remove('hidden');
+                appSection.classList.add('hidden');
+                userEmailSpan.textContent = '';
+                clearFolderTree();
+                selectedFolderId = null;
+                selectedFolderSpan.textContent = 'None';
+                cameraSection.classList.add('hidden');
+                noCameraSection.classList.remove('hidden');
+                stopCameraStream(); // Stop camera on sign out
+            }
+        }
+
+        // Function to show toast notifications
+        function showToast(message, type = 'info', duration = 3000) {
+            console.log(`Toast (${type}):`, message);
+            const toast = document.createElement('div');
+            toast.className = `toast-message ${type}`;// Add type class (e.g., 'success', 'error')
+            toast.textContent = message;
+
+            toastContainer.appendChild(toast);
+
+            // Trigger fade in
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10); // Small delay for CSS transition
+
+            // Set timeout to remove the toast
+            setTimeout(() => {
+                toast.classList.remove('show');
+                // Remove element after fade out transition completes
+                toast.addEventListener('transitionend', () => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                });
+            }, duration);
+        }
+
+        // --- Event Listeners ---
+        authButton.addEventListener('click', handleAuthClick);
+        signoutButton.addEventListener('click', handleSignoutClick);
+        refreshFoldersButton.addEventListener('click', listFolders);
+        createFolderButton.addEventListener('click', createFolder);
+        captureButton.addEventListener('click', handleCaptureClick);
+        recaptureButton.addEventListener('click', handleRecaptureClick);
+        uploadButton.addEventListener('click', uploadPhoto);
+        folderSearchInput.addEventListener('input', (e) => filterAndRenderTree(e.target.value)); // Add listener for search
+
+        // --- Initial Setup ---
+        authButton.disabled = true; // Disable button until libs are loaded
+
+        window.gisLoaded = gisLoaded;
+
+    </script>
+
+    <!-- Google API Client Library -->
+    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <!-- Google Sign-In (GSI) Client Library -->
+    <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
 </body>
 </html>
