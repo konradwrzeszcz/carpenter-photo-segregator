@@ -310,7 +310,6 @@
         const refreshFoldersButton = document.getElementById('refresh-folders-button');
         const newFolderInput = document.getElementById('new-folder-name');
         const createFolderButton = document.getElementById('create-folder-button');
-        const photoPreview = document.getElementById('photo-preview');
         const folderSearchInput = document.getElementById('folder-search');
         const toastContainer = document.getElementById('toast-container');
         const selectedFolderNameDisplay = document.getElementById('selected-folder-name-display');
@@ -444,7 +443,7 @@
                 google.accounts.oauth2.revoke(token.access_token, () => {
                     gapi.client.setToken(null);
                     updateUiSignedIn(false);
-                    showToast('Signed out.');
+                    showToast('Signed out.', 'success');
                     clearFolderTree();
                     selectedFolderId = null;
                     selectedFolderName = null;
@@ -632,7 +631,6 @@
         }
 
         function handleFolderSelect(event) {
-            console.log('[handleFolderSelect] Triggered by click on:', event.target); // Keep this log
             event.stopPropagation();
             let targetLi = event.target;
             while (targetLi && targetLi.tagName !== 'LI') {
@@ -642,9 +640,6 @@
 
             const newFolderId = targetLi.dataset.folderId;
             const newFolderName = targetLi.querySelector('.folder-name').textContent;
-
-            // Re-add detailed log BEFORE the check
-            console.log(`[handleFolderSelect] Comparing new ID: ${newFolderId} with current selected ID: ${selectedFolderId}`);
 
             // Check if the selection is actually changing
             const isNewSelection = newFolderId !== selectedFolderId;
@@ -661,14 +656,12 @@
 
             // Update state and UI only if it is a new selection
             if (isNewSelection) {
-                console.log(`Folder selection changed: ${newFolderName} (${newFolderId})`); // Optional log
                 selectedFolderId = newFolderId;
                 selectedFolderName = newFolderName;
                 selectedFolderNameDisplay.textContent = newFolderName;
                 captureUploadSection.classList.remove('hidden');
                 resetPhotoState(); // Reset photo state ONLY when folder selection changes
             } else {
-                console.log(`Re-clicked same folder: ${newFolderName} (${newFolderId})`); // Optional log
                 // Ensure capture section is visible even if same folder is re-clicked
                 captureUploadSection.classList.remove('hidden');
             }
@@ -685,13 +678,9 @@
         }
 
         function handleFileInputChange(event) {
-            console.log('[handleFileInputChange] Event triggered!');
             try {
-                console.log('[handleFileInputChange] Inside try block...');
                 if (event.target.files && event.target.files.length > 0) {
-                    console.log('[handleFileInputChange] Found files:', event.target.files.length); // Log success
                     const filesFromInput = event.target.files; // Get the FileList
-                    console.log('[handleFileInputChange] Got FileList:', filesFromInput);
 
                     // Copy files to a new array BEFORE resetting input
                     const filesArray = [];
@@ -699,11 +688,9 @@
                         filesArray.push(filesFromInput[i]);
                     }
                     selectedFiles = filesArray; // Assign the copied array to global state
-                    console.log('[handleFileInputChange] Copied to array, selectedFiles:', selectedFiles);
 
                     // Now reset the input value - this should NOT affect the copied array
                     event.target.value = null;
-                    console.log('[handleFileInputChange] Input value reset. Checking selectedFiles again:', selectedFiles);
 
                     // Proceed using the selectedFiles array
                     thumbnailContainer.innerHTML = '';
@@ -719,21 +706,16 @@
                         thumbnailContainer.appendChild(img);
                         activeObjectURLs.push(objectURL); // Store URL for later revocation
                     }
-                    console.log('[handleFileInputChange] Accessing fileCountDisplay...', fileCountDisplay);
                     fileCountDisplay.textContent = selectedFiles.length;
-                    console.log('[handleFileInputChange] Accessing captureControls/previewControls...', captureControls, previewControls);
                     captureControls.classList.add('hidden');
                     previewControls.classList.remove('hidden');
 
                     showToast(`${selectedFiles.length} photo(s) ready for upload.`, 'info');
                 } else {
-                    console.log('[handleFileInputChange] No files found in event.target.files or length is 0.');
-                    console.log('[handleFileInputChange] event.target.files value was:', event.target.files); // Log the actual value
                     selectedFiles = null;
                     fileCountDisplay.textContent = 0;
                 }
             } catch (error) {
-                console.error('[handleFileInputChange] Error during file processing:', error);
                 showToast('Error processing selected photos.', 'error');
                 resetPhotoState(); // Reset state on error
             }
@@ -746,7 +728,6 @@
         }
 
         function resetPhotoState() {
-            console.log('[resetPhotoState] Called. Resetting selectedFiles.'); // Re-add log
             selectedFiles = null;
             photoInput.value = null;
             thumbnailContainer.innerHTML = ''; // Clear thumbnails
@@ -767,7 +748,6 @@
         // --- Upload Function (Modified for multiple files) ---
         async function handleUploadClick(event) {
             event.stopPropagation();
-            console.log('[handleUploadClick] Started. Checking selectedFiles value:', selectedFiles); // Re-add log
             if (!selectedFiles || selectedFiles.length === 0) {
                 showToast('No photo selected yet.', 'error');
                 return;
@@ -778,13 +758,21 @@
             }
 
             const totalFiles = selectedFiles.length;
-            showToast(`Starting upload of ${totalFiles} photo(s)...`, 'info');
+            const progressToastId = 'upload-progress-toast'; // Unique ID for the progress toast
+            showToast(`Uploading 0/${totalFiles} photo(s)...`, 'info', 0, progressToastId); // Show initial non-expiring toast
             uploadButton.disabled = true;
             clearSelectionButton.disabled = true;
 
             let successCount = 0;
             let errorCount = 0;
             const uploadPromises = [];
+
+            // Function to update progress toast (called after each promise settles)
+            const updateProgressToast = () => {
+                const completedCount = successCount + errorCount;
+                const message = `Uploading... (${completedCount}/${totalFiles} completed${errorCount > 0 ? ', ' + errorCount + ' failed' : ''})`;
+                showToast(message, 'info', 0, progressToastId); // Update non-expiring toast
+            };
 
             // Get token once for all uploads
             const accessToken = gapi.client.getToken()?.access_token;
@@ -797,28 +785,39 @@
 
             // Create an upload promise for each file
             for (const file of selectedFiles) {
-                uploadPromises.push(uploadSingleFile(file, selectedFolderId, accessToken));
+                // Chain .then and .catch to update progress after each settles
+                uploadPromises.push(
+                    uploadSingleFile(file, selectedFolderId, accessToken)
+                        .then(result => {
+                            successCount++;
+                            updateProgressToast();
+                            return result; // Pass result along
+                        })
+                        .catch(error => {
+                            errorCount++;
+                            updateProgressToast();
+                            console.error('Individual upload failed:', error);
+                            throw error; // Re-throw to be caught by Promise.allSettled
+                        })
+                );
             }
 
             // Wait for all upload attempts to settle
-            const results = await Promise.allSettled(uploadPromises);
+            try {
+                await Promise.all(uploadPromises); // Wait for all to complete (or first failure if using Promise.all)
+                // If we reach here, all succeeded (using Promise.all approach)
+                // Or handle settled results if needed later
+            } catch (overallError) {
+                // At least one promise rejected
+                console.log("One or more uploads failed.");
+            }
 
-            // Process results
-            results.forEach(result => {
-                if (result.status === 'fulfilled') {
-                    successCount++;
-                } else {
-                    errorCount++;
-                    console.error('Individual upload failed:', result.reason);
-                }
-            });
-
-            // Final status message
-            if (errorCount === 0) {
-                showToast(`${successCount} photo(s) uploaded successfully!`, 'success');
+            showToast('Upload process finished.', 'info', 1000, progressToastId); // Clear progress toast briefly
+            if (errorCount === 0 && successCount === totalFiles) {
+                showToast(`All ${successCount} photo(s) uploaded successfully!`, 'success', 5000); // Final success (longer duration)
                 resetPhotoState(); // Reset UI only if all succeed
             } else {
-                showToast(`${successCount} succeeded, ${errorCount} failed. Check console for details.`, 'error', 5000);
+                showToast(`${successCount}/${totalFiles} succeeded, ${errorCount} failed. Check console.`, 'error', 7000); // Final error (longer duration)
                 // Re-enable buttons on partial/full failure
                 uploadButton.disabled = false;
                 clearSelectionButton.disabled = false;
@@ -838,7 +837,6 @@
                     mimeType: file.type || 'image/jpeg',
                     parents: [parentFolderId]
                 };
-                console.log('Upload metadata:', metadata);
                 const form = new FormData();
                 form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
                 form.append('file', file);
@@ -876,22 +874,46 @@
             }
         }
 
-        function showToast(message, type = 'info', duration = 3000) {
-            const toast = document.createElement('div');
-            toast.className = `toast-message ${type}`;
-            toast.textContent = message;
-            toastContainer.appendChild(toast);
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 10);
-            setTimeout(() => {
-                toast.classList.remove('show');
-                toast.addEventListener('transitionend', () => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                });
-            }, duration);
+        function showToast(message, type = 'info', duration = 3000, toastId = null) {
+            let toast = toastId ? document.getElementById(toastId) : null;
+            console.log(`Toast (${type}):`, message);
+
+            if (toast) {
+                // Update existing toast
+                toast.textContent = message;
+                // Reset class list to ensure correct type styling
+                toast.className = `toast-message ${type} show`;
+            } else {
+                // Create new toast
+                toast = document.createElement('div');
+                toast.className = `toast-message ${type}`;
+                if (toastId) toast.id = toastId; // Assign ID if provided
+                toast.textContent = message;
+                toastContainer.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, 10);
+            }
+
+            // Clear existing removal timeout if updating
+            if (toast.dataset.timeoutId) {
+                clearTimeout(parseInt(toast.dataset.timeoutId));
+                toast.removeAttribute('data-timeout-id');
+            }
+
+            // Set timeout to remove the toast if duration is provided
+            if (duration > 0) {
+                const timeoutId = setTimeout(() => {
+                    toast.classList.remove('show');
+                    toast.addEventListener('transitionend', () => {
+                        if (toast.parentNode) {
+                            toast.parentNode.removeChild(toast);
+                        }
+                    });
+                }, duration);
+                toast.dataset.timeoutId = timeoutId.toString(); // Store timeout ID
+            }
         }
 
         // --- Event Listeners ---
