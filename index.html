@@ -269,12 +269,14 @@
                 <h2>Take Photo</h2>
                 <p>Uploading to: <strong id="selected-folder-name-display">(No folder selected)</strong></p>
 
-                <!-- Hidden file input to trigger camera -->
-                <input type="file" id="photo-input" accept="image/*" class="hidden" multiple>
+                <!-- Hidden file inputs -->
+                <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden"> <!-- Input for camera -->
+                <input type="file" id="gallery-input" accept="image/*" class="hidden" multiple> <!-- Input for gallery (multiple) -->
 
                 <!-- Visible elements -->
                 <div id="capture-controls">
-                    <button id="take-photo-button">Select Photos</button>
+                    <button id="take-photo-btn">Take Photo (Camera)</button>
+                    <button id="select-gallery-btn">Select from Gallery</button>
                 </div>
 
                 <div id="preview-controls" class="hidden">
@@ -314,8 +316,10 @@
         const toastContainer = document.getElementById('toast-container');
         const selectedFolderNameDisplay = document.getElementById('selected-folder-name-display');
         const captureUploadSection = document.getElementById('capture-upload-section');
-        const photoInput = document.getElementById('photo-input');
-        const takePhotoButton = document.getElementById('take-photo-button');
+        const cameraInput = document.getElementById('camera-input');
+        const galleryInput = document.getElementById('gallery-input');
+        const takePhotoButton = document.getElementById('take-photo-btn');
+        const selectGalleryButton = document.getElementById('select-gallery-btn');
         const captureControls = document.getElementById('capture-controls');
         const previewControls = document.getElementById('preview-controls');
         const uploadButton = document.getElementById('upload-button');
@@ -674,29 +678,26 @@
         // --- Photo Input/Preview Functions ---
         function handleTakePhotoClick(event) {
             event.stopPropagation();
-            photoInput.click();
+            cameraInput.click();
+        }
+
+        function handleSelectGalleryClick(event) {
+            event.stopPropagation();
+            galleryInput.click();
         }
 
         function handleFileInputChange(event) {
             try {
                 if (event.target.files && event.target.files.length > 0) {
-                    const filesFromInput = event.target.files; // Get the FileList
-
-                    // Copy files to a new array BEFORE resetting input
+                    const filesFromInput = event.target.files;
                     const filesArray = [];
                     for (let i = 0; i < filesFromInput.length; i++) {
                         filesArray.push(filesFromInput[i]);
                     }
-                    selectedFiles = filesArray; // Assign the copied array to global state
-
-                    // Now reset the input value - this should NOT affect the copied array
+                    selectedFiles = filesArray;
                     event.target.value = null;
-
-                    // Proceed using the selectedFiles array
                     thumbnailContainer.innerHTML = '';
                     revokeActiveObjectURLs();
-
-                    // Create and display thumbnails
                     for (const file of selectedFiles) {
                         const img = document.createElement('img');
                         const objectURL = URL.createObjectURL(file);
@@ -704,12 +705,11 @@
                         img.className = 'thumbnail-img';
                         img.alt = file.name;
                         thumbnailContainer.appendChild(img);
-                        activeObjectURLs.push(objectURL); // Store URL for later revocation
+                        activeObjectURLs.push(objectURL);
                     }
                     fileCountDisplay.textContent = selectedFiles.length;
                     captureControls.classList.add('hidden');
                     previewControls.classList.remove('hidden');
-
                     showToast(`${selectedFiles.length} photo(s) ready for upload.`, 'info');
                 } else {
                     selectedFiles = null;
@@ -717,7 +717,7 @@
                 }
             } catch (error) {
                 showToast('Error processing selected photos.', 'error');
-                resetPhotoState(); // Reset state on error
+                resetPhotoState();
             }
         }
 
@@ -729,9 +729,10 @@
 
         function resetPhotoState() {
             selectedFiles = null;
-            photoInput.value = null;
-            thumbnailContainer.innerHTML = ''; // Clear thumbnails
-            revokeActiveObjectURLs(); // Revoke any active URLs
+            cameraInput.value = null;
+            galleryInput.value = null;
+            thumbnailContainer.innerHTML = '';
+            revokeActiveObjectURLs();
             fileCountDisplay.textContent = 0;
             captureControls.classList.remove('hidden');
             previewControls.classList.add('hidden');
@@ -742,7 +743,7 @@
         // Helper function to revoke object URLs
         function revokeActiveObjectURLs() {
             activeObjectURLs.forEach(url => URL.revokeObjectURL(url));
-            activeObjectURLs = []; // Reset the array
+            activeObjectURLs = [];
         }
 
         // --- Upload Function (Modified for multiple files) ---
@@ -758,8 +759,8 @@
             }
 
             const totalFiles = selectedFiles.length;
-            const progressToastId = 'upload-progress-toast'; // Unique ID for the progress toast
-            showToast(`Uploading 0/${totalFiles} photo(s)...`, 'info', 0, progressToastId); // Show initial non-expiring toast
+            const progressToastId = 'upload-progress-toast';
+            showToast(`Uploading 0/${totalFiles} photo(s)...`, 'info', 0, progressToastId);
             uploadButton.disabled = true;
             clearSelectionButton.disabled = true;
 
@@ -767,14 +768,12 @@
             let errorCount = 0;
             const uploadPromises = [];
 
-            // Function to update progress toast (called after each promise settles)
             const updateProgressToast = () => {
                 const completedCount = successCount + errorCount;
                 const message = `Uploading... (${completedCount}/${totalFiles} completed${errorCount > 0 ? ', ' + errorCount + ' failed' : ''})`;
-                showToast(message, 'info', 0, progressToastId); // Update non-expiring toast
+                showToast(message, 'info', 0, progressToastId);
             };
 
-            // Get token once for all uploads
             const accessToken = gapi.client.getToken()?.access_token;
             if (!accessToken) {
                 showToast('Authentication error. Please sign in again.', 'error');
@@ -783,51 +782,42 @@
                 return;
             }
 
-            // Create an upload promise for each file
             for (const file of selectedFiles) {
-                // Chain .then and .catch to update progress after each settles
                 uploadPromises.push(
                     uploadSingleFile(file, selectedFolderId, accessToken)
                         .then(result => {
                             successCount++;
                             updateProgressToast();
-                            return result; // Pass result along
+                            return result;
                         })
                         .catch(error => {
                             errorCount++;
                             updateProgressToast();
                             console.error('Individual upload failed:', error);
-                            throw error; // Re-throw to be caught by Promise.allSettled
+                            throw error;
                         })
                 );
             }
 
-            // Wait for all upload attempts to settle
             try {
-                await Promise.all(uploadPromises); // Wait for all to complete (or first failure if using Promise.all)
-                // If we reach here, all succeeded (using Promise.all approach)
-                // Or handle settled results if needed later
+                await Promise.all(uploadPromises);
             } catch (overallError) {
-                // At least one promise rejected
                 console.log("One or more uploads failed.");
             }
 
-            showToast('Upload process finished.', 'info', 1000, progressToastId); // Clear progress toast briefly
+            showToast('Upload process finished.', 'info', 1000, progressToastId);
             if (errorCount === 0 && successCount === totalFiles) {
-                showToast(`All ${successCount} photo(s) uploaded successfully!`, 'success', 5000); // Final success (longer duration)
-                resetPhotoState(); // Reset UI only if all succeed
+                showToast(`All ${successCount} photo(s) uploaded successfully!`, 'success', 5000);
+                resetPhotoState();
             } else {
-                showToast(`${successCount}/${totalFiles} succeeded, ${errorCount} failed. Check console.`, 'error', 7000); // Final error (longer duration)
-                // Re-enable buttons on partial/full failure
+                showToast(`${successCount}/${totalFiles} succeeded, ${errorCount} failed. Check console.`, 'error', 7000);
                 uploadButton.disabled = false;
                 clearSelectionButton.disabled = false;
             }
 
-            // Always revoke URLs after upload attempt, regardless of success/failure
             revokeActiveObjectURLs();
         }
 
-        // Helper function to upload a single file
         async function uploadSingleFile(file, parentFolderId, accessToken) {
             console.log(`Uploading file: ${file.name} to folder: ${parentFolderId}`);
             try {
@@ -879,15 +869,12 @@
             console.log(`Toast (${type}):`, message);
 
             if (toast) {
-                // Update existing toast
                 toast.textContent = message;
-                // Reset class list to ensure correct type styling
                 toast.className = `toast-message ${type} show`;
             } else {
-                // Create new toast
                 toast = document.createElement('div');
                 toast.className = `toast-message ${type}`;
-                if (toastId) toast.id = toastId; // Assign ID if provided
+                if (toastId) toast.id = toastId;
                 toast.textContent = message;
                 toastContainer.appendChild(toast);
 
@@ -896,13 +883,11 @@
                 }, 10);
             }
 
-            // Clear existing removal timeout if updating
             if (toast.dataset.timeoutId) {
                 clearTimeout(parseInt(toast.dataset.timeoutId));
                 toast.removeAttribute('data-timeout-id');
             }
 
-            // Set timeout to remove the toast if duration is provided
             if (duration > 0) {
                 const timeoutId = setTimeout(() => {
                     toast.classList.remove('show');
@@ -912,7 +897,7 @@
                         }
                     });
                 }, duration);
-                toast.dataset.timeoutId = timeoutId.toString(); // Store timeout ID
+                toast.dataset.timeoutId = timeoutId.toString();
             }
         }
 
@@ -922,15 +907,14 @@
         refreshFoldersButton.addEventListener('click', listFolders);
         createFolderButton.addEventListener('click', createFolder);
         takePhotoButton.addEventListener('click', handleTakePhotoClick);
-        photoInput.addEventListener('change', handleFileInputChange);
+        selectGalleryButton.addEventListener('click', handleSelectGalleryClick);
+        cameraInput.addEventListener('change', handleFileInputChange);
+        galleryInput.addEventListener('change', handleFileInputChange);
         clearSelectionButton.addEventListener('click', handleClearSelectionClick);
         uploadButton.addEventListener('click', handleUploadClick);
         folderSearchInput.addEventListener('input', (e) => filterAndRenderTree(e.target.value));
 
-        // --- Initial Setup ---
         authButton.disabled = true;
-
-        // Load Google APIs via script tags at end of body
 
     </script>
 
