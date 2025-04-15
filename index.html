@@ -336,6 +336,7 @@
         let selectedFolderName = null;
         let fullFolderList = [];
         let selectedFiles = null; // Stores the FileList object from input
+        let photoSource = null; // Track source: 'camera' or 'gallery'
         let activeObjectURLs = []; // Keep track of created Object URLs for cleanup
 
         // --- Initialization ---
@@ -688,6 +689,9 @@
 
         function handleFileInputChange(event) {
             try {
+                photoSource = event.target.id === 'camera-input' ? 'camera' : 'gallery'; // Set photo source
+                console.log('[handleFileInputChange] Photo source:', photoSource); // Optional: Keep for testing
+
                 if (event.target.files && event.target.files.length > 0) {
                     const filesFromInput = event.target.files;
                     const filesArray = [];
@@ -729,6 +733,7 @@
 
         function resetPhotoState() {
             selectedFiles = null;
+            photoSource = null; // Reset photo source
             cameraInput.value = null;
             galleryInput.value = null;
             thumbnailContainer.innerHTML = '';
@@ -760,10 +765,43 @@
 
             const totalFiles = selectedFiles.length;
             const progressToastId = 'upload-progress-toast';
-            showToast(`Uploading 0/${totalFiles} photo(s)...`, 'info', 0, progressToastId);
+
+            // Check if we should attempt download first
+            let attemptDownload = (photoSource === 'camera' && totalFiles === 1);
+            let initialToastMsg = attemptDownload 
+                ? 'Saving to device & starting upload...' 
+                : `Uploading 0/${totalFiles} photo(s)...`;
+
+            showToast(initialToastMsg, 'info', 0, progressToastId); // Show initial non-expiring toast
             uploadButton.disabled = true;
             clearSelectionButton.disabled = true;
 
+            // Perform download if needed
+            if (attemptDownload) {
+                try {
+                    console.log('Attempting to save camera photo to device...');
+                    const fileToSave = selectedFiles[0];
+                    const link = document.createElement('a');
+                    const filename = fileToSave.name || `photo_${new Date().toISOString().replace(/:/g, '_').replace(/\.\d{3}Z$/, 'Z')}.jpg`;
+                    const url = URL.createObjectURL(fileToSave);
+                    try {
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        console.log('Save to device triggered.');
+                    } finally {
+                        URL.revokeObjectURL(url); 
+                    }
+                } catch(err) {
+                    console.error('Error saving camera photo to device:', err);
+                    showToast('Could not save photo to device.', 'error', 3000); // Show separate error, but continue upload
+                    attemptDownload = false; // Ensure final toast doesn't mention failed save attempt misleadingly if upload succeeds
+                }
+            }
+
+            // Proceed with Upload logic
             let successCount = 0;
             let errorCount = 0;
             const uploadPromises = [];
@@ -807,10 +845,10 @@
 
             showToast('Upload process finished.', 'info', 1000, progressToastId);
             if (errorCount === 0 && successCount === totalFiles) {
-                showToast(`All ${successCount} photo(s) uploaded successfully!`, 'success', 5000);
+                showToast(`All ${successCount} photo(s) uploaded successfully!` + (attemptDownload ? ' (Save attempted)' : ''), 'success', 5000);
                 resetPhotoState();
             } else {
-                showToast(`${successCount}/${totalFiles} succeeded, ${errorCount} failed. Check console.`, 'error', 7000);
+                showToast(`${successCount}/${totalFiles} succeeded, ${errorCount} failed. Check console.` + (attemptDownload ? ' (Save attempted)' : ''), 'error', 7000);
                 uploadButton.disabled = false;
                 clearSelectionButton.disabled = false;
             }
