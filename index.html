@@ -864,7 +864,22 @@
         async function uploadSingleFile(file, parentFolderId, accessToken) {
             console.log(`Uploading file: ${file.name} to folder: ${parentFolderId}`);
             try {
-                const filename = file.name || `photo_${new Date().toISOString().replace(/:/g, '_').replace(/\.\d{3}Z$/, 'Z')}.jpg`;
+                // Extract original extension or default to .jpg
+                const originalName = file.name || '';
+                const lastDotIndex = originalName.lastIndexOf('.');
+                const extension = (lastDotIndex > -1 && lastDotIndex < originalName.length - 1)
+                                  ? originalName.substring(lastDotIndex)
+                                  : '.jpg';
+
+                // Generate ISO8601 timestamp
+                const isoTimestamp = new Date().toISOString();
+
+                // Generate 4 random alphanumeric characters
+                const randomChars = Math.random().toString(36).substring(2, 6); // Get 4 chars
+
+                // Combine timestamp, random chars, and extension for filename
+                const filename = `${isoTimestamp}_${randomChars}${extension}`;
+
                 const metadata = {
                     name: filename,
                     mimeType: file.type || 'image/jpeg',
