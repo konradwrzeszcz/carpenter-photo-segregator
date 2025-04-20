@@ -403,8 +403,13 @@
             if (resp.error !== undefined) {
                 // Log error for silent failure, show toast for manual failure
                 console.warn('Token request error:', resp.error);
-                // Only show toast if it wasn't a silent attempt error (which is expected if user isn't logged in)
-                if (resp.error !== 'popup_closed' && resp.error !== 'user_cancel' && resp.error !== 'access_denied' && resp.error !== 'immediate_failed') {
+
+                // Specific message for expired session during silent sign-in attempt
+                if (resp.error === 'interaction_required') {
+                    showToast('Session expired. Please sign in again.', 'info', 5000);
+                }
+                // Only show generic toast if it wasn't a typical silent attempt error or manual cancel
+                else if (resp.error !== 'popup_closed' && resp.error !== 'user_cancel' && resp.error !== 'access_denied' && resp.error !== 'immediate_failed') {
                     showToast('Sign-in error: ' + resp.error, 'error', 5000);
                 }
                 // Do NOT throw error here for silent failures, just don't proceed
